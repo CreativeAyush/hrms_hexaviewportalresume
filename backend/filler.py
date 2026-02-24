@@ -284,14 +284,18 @@ def generate_multi_page_resume(rec_template_path, brand_template_path, data, ori
                 from docx2pdf import convert
                 convert(docx_path, pdf_path)
             else:
-                # On Linux (Docker), use LibreOffice headless
+                # On Linux (Docker), use LibreOffice (soffice) headless
+                # We use -env:UserInstallation to ensure a writable user profile directory, which
+                # fixes "unable to load document" errors in many headless environments.
                 result = subprocess.run(
-                    ["libreoffice", "--headless", "--convert-to", "pdf",
-                     "--outdir", temp_dir, docx_path],
+                    ["soffice", "--headless", "-env:UserInstallation=file:///tmp/libreoffice_user_profile",
+                     "--convert-to", "pdf", "--outdir", temp_dir, docx_path],
                     capture_output=True, text=True, timeout=120
                 )
                 if result.returncode != 0:
-                    raise RuntimeError(f"LibreOffice conversion failed: {result.stderr}")
+                    error_msg = f"LibreOffice conversion failed.\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
+                    print(error_msg)
+                    raise RuntimeError(error_msg)
             
             with open(pdf_path, "rb") as f:
                 pdf_bytes = f.read()
