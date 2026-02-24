@@ -288,8 +288,20 @@ def generate_multi_page_resume(rec_template_path, brand_template_path, data, ori
                 # We use -env:UserInstallation to ensure a writable user profile directory, which
                 # fixes "unable to load document" errors in many headless environments.
                 result = subprocess.run(
-                    ["soffice", "--headless", "-env:UserInstallation=file:///tmp/libreoffice_user_profile",
-                     "--convert-to", "pdf", "--outdir", temp_dir, docx_path],
+                    [
+                        "soffice", 
+                        "--headless", 
+                        "--invisible",
+                        "--nodefault",
+                        "--nofirststartwizard",
+                        "--nolockcheck",
+                        "--nologo",
+                        "--norestore",
+                        "-env:UserInstallation=file:///tmp/libreoffice_user_profile",
+                        "--convert-to", "pdf", 
+                        "--outdir", temp_dir, 
+                        docx_path
+                    ],
                     capture_output=True, text=True, timeout=120
                 )
                 if result.returncode != 0:
@@ -305,10 +317,6 @@ def generate_multi_page_resume(rec_template_path, brand_template_path, data, ori
             return out_io
         except Exception as e:
             print(f"DOCX to PDF Conversion Failed: {e}")
-            # Fallback to returning DOCX if conversion fails
-            out_io = BytesIO()
-            final_doc.save(out_io)
-            out_io.seek(0)
-            return out_io
+            raise  # Do not fallback to DOCX, let the API report the error
 
 

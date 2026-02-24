@@ -4,12 +4,17 @@ FROM python:3.11-slim
 # Install system dependencies for document processing and LibreOffice for DOCX to PDF conversion
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libreoffice-writer \
+    libreoffice-calc \
     libreoffice-java-common \
     default-jre-headless \
     libfontconfig1 \
     libxrender1 \
     libxtst6 \
     libxi6 \
+    libdbus-glib-1-2 \
+    libglu1-mesa \
+    libsm6 \
+    libice6 \
     fonts-liberation \
     fonts-dejavu \
     fonts-freefont-ttf \
@@ -20,6 +25,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 ENV HOME=/tmp
+
+# Create a dedicated, writable home for LibreOffice in headless mode
+RUN mkdir -p /tmp/libreoffice_user_profile && chmod 777 /tmp/libreoffice_user_profile
 
 # Copy only the necessary parts from the root context
 COPY backend/requirements.txt .
