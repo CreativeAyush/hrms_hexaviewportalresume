@@ -1,0 +1,21 @@
+# Backend Dependencies — Hexaview Resume Converter
+
+# ── Web Framework ──────────────────────────────────────────
+fastapi
+uvicorn[standard]
+python-multipart
+
+# ── Document Processing ────────────────────────────────────
+python-docx          # Read/write .docx files
+pdfminer.six         # Extract text from PDFs
+pypdf                # Merge/read PDF pages
+
+# ── PDF Generation ─────────────────────────────────────────
+fpdf2                # Generate recommendation page as PDF
+docx2pdf             # Convert final DOCX to PDF (requires MS Word on Windows)
+
+# ── AI Analysis ───────────────────────────────────────────
+openai               # GPT-4o-mini for resume analysis
+
+# ── Configuration ─────────────────────────────────────────
+python-dotenv        # Load .env for API keys
