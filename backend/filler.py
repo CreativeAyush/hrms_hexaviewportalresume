@@ -6,15 +6,15 @@ import copy
 def merge_documents(doc1, doc2):
     """
     Appends contents of doc2 to the end of doc1.
+    Uses deepcopy so elements are copied, not moved out of doc2.
     """
-    # Add a page break between docs
     doc1.add_page_break()
 
     for element in doc2.element.body:
         # Avoid SectPr (section properties) which can break page layout if copied blindly
         if element.tag.endswith("sectPr"):
             continue
-        doc1.element.body.append(element)
+        doc1.element.body.append(copy.deepcopy(element))
 
     return doc1
 
@@ -232,37 +232,20 @@ def copy_doc_elements(source_bytes, target_doc):
     return target_doc
 
 
-def generate_multi_page_resume(rec_template_path, brand_template_path, data, original_bytes, filename):
-    if filename.lower().endswith(".pdf"):
-        rec_pdf = generate_recommendation_pdf(data)
-        return merge_pdfs(rec_pdf, original_bytes)
-
-    # 1. Fill Page 1 (Recommendation)
-    doc_rec = fill_template(rec_template_path, data)
-
-    # 2. Prepare Page 2 (Branded Resume)
-    doc_brand = Document(brand_template_path)
-
-    if filename.lower().endswith(".docx"):
-        doc_brand = copy_doc_elements(original_bytes, doc_brand)
-    else:
-        for p in doc_brand.paragraphs:
-            if "{{CONTENT}}" in p.text:
-                p.text = data.get("FULL_CONTENT", "")
-                break
-
-    # 3. Merge them
-    final_doc = merge_documents(doc_rec, doc_brand)
-
-    # 4. Convert final DOCX to PDF
+def docx_to_pdf_bytes(docx_bytes):
+    """
+    Convert a DOCX (as bytes) to PDF bytes using
+    docx2pdf (Windows) or LibreOffice (Linux/Docker).
+    Uses a unique per-request LibreOffice profile to avoid
+    lock contention when multiple users hit the server simultaneously.
+    """
     import tempfile
     import platform
     import subprocess
 
-    # Use explicit temp files, not a TemporaryDirectory that disappears too early
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as docx_tmp:
-        docx_path = docx_tmp.name
-        final_doc.save(docx_path)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp:
+        tmp.write(docx_bytes)
+        docx_path = tmp.name
 
     pdf_path = docx_path.replace(".docx", ".pdf")
 
@@ -271,27 +254,34 @@ def generate_multi_page_resume(rec_template_path, brand_template_path, data, ori
             from docx2pdf import convert
             convert(docx_path, pdf_path)
         else:
-            result = subprocess.run(
-                [
-                    "soffice",
-                    "--headless",
-                    "--invisible",
-                    "--nodefault",
-                    "--nofirststartwizard",
-                    "--nolockcheck",
-                    "--nologo",
-                    "--norestore",
-                    "-env:UserInstallation=file:///tmp/libreoffice_user_profile",
-                    "--convert-to",
-                    "pdf",
-                    "--outdir",
-                    os.path.dirname(docx_path),
-                    docx_path,
-                ],
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
+            # Unique profile dir prevents lock issues with concurrent users
+            profile_dir = tempfile.mkdtemp(prefix="lo_profile_")
+            try:
+                result = subprocess.run(
+                    [
+                        "soffice",
+                        "--headless",
+                        "--invisible",
+                        "--nodefault",
+                        "--nofirststartwizard",
+                        "--nolockcheck",
+                        "--nologo",
+                        "--norestore",
+                        f"-env:UserInstallation=file://{profile_dir}",
+                        "--convert-to",
+                        "pdf",
+                        "--outdir",
+                        os.path.dirname(docx_path),
+                        docx_path,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+            finally:
+                import shutil
+                shutil.rmtree(profile_dir, ignore_errors=True)
+
             if result.returncode != 0:
                 error_msg = (
                     f"LibreOffice conversion failed.\n"
@@ -302,14 +292,43 @@ def generate_multi_page_resume(rec_template_path, brand_template_path, data, ori
                 raise RuntimeError(error_msg)
 
         with open(pdf_path, "rb") as f:
-            pdf_bytes = f.read()
-
-        out_io = BytesIO(pdf_bytes)
-        out_io.seek(0)
-        return out_io
+            return f.read()
     finally:
         if os.path.exists(docx_path):
             os.unlink(docx_path)
         if os.path.exists(pdf_path):
             os.unlink(pdf_path)
 
+
+def generate_multi_page_resume(rec_template_path, brand_template_path, data, original_bytes, filename):
+    """
+    Produces a PDF with:
+      - Page 1   : Hexaview recommendation / evaluation front page
+      - Page 2+  : The original resume, completely unchanged
+    """
+
+    # ── PDF input ──────────────────────────────────────────────────────────────
+    if filename.lower().endswith(".pdf"):
+        rec_pdf = generate_recommendation_pdf(data)
+        return merge_pdfs(rec_pdf, original_bytes)
+
+    # ── DOCX input ─────────────────────────────────────────────────────────────
+    # The key insight: never merge at the DOCX level, because LibreOffice
+    # re-renders combined DOCX files and can change fonts/layout of the original.
+    # Instead:
+    #   1. Generate the recommendation front page as a clean PDF (via fpdf).
+    #   2. Convert the ORIGINAL, untouched DOCX to PDF (LibreOffice only
+    #      ever sees the file the candidate submitted - nothing is modified).
+    #   3. Merge the two PDFs.
+    if filename.lower().endswith(".docx"):
+        # Step 1: recommendation front page -> PDF bytes
+        rec_pdf_bytes = generate_recommendation_pdf(data)
+
+        # Step 2: original DOCX -> PDF bytes (original file passed as-is)
+        original_pdf_bytes = docx_to_pdf_bytes(original_bytes)
+
+        # Step 3: merge rec PDF (front) + original resume PDF (rest)
+        return merge_pdfs(rec_pdf_bytes, original_pdf_bytes)
+
+    # ── Fallback (unsupported format) ──────────────────────────────────────────
+    raise ValueError(f"Unsupported file format: {filename}")
