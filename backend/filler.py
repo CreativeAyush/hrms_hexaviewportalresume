@@ -8,18 +8,19 @@ def merge_documents(doc1, doc2):
     """
     # Add a page break between docs
     doc1.add_page_break()
-    
+
     for element in doc2.element.body:
         # Avoid SectPr (section properties) which can break page layout if copied blindly
-        if element.tag.endswith('sectPr'):
+        if element.tag.endswith("sectPr"):
             continue
         doc1.element.body.append(element)
-    
+
     return doc1
+
 
 def fill_template(template_path, data):
     doc = Document(template_path)
-    
+
     # Generic placeholder replacement for paragraphs
     for paragraph in doc.paragraphs:
         for key, value in data.items():
@@ -31,12 +32,10 @@ def fill_template(template_path, data):
 
                 # If value is a list, join it with newlines
                 if isinstance(value, list):
-
                     value = "\n".join([str(v) for v in value])
-                
+
                 # Handle multi-line value
                 if "\n" in str(value):
-
                     lines = str(value).split("\n")
                     paragraph.text = paragraph.text.replace(placeholder, lines[0])
                     for line in lines[1:]:
@@ -53,39 +52,39 @@ def fill_template(template_path, data):
 
     return doc
 
+
 def clean_for_pdf(text):
     if not text:
         return ""
     # Mapping of common unicode characters to latin-1 equivalents or safe characters
     replacements = {
-        '\u2022': '-', # Bullet
-        '\u2023': '-', # Triangular bullet
-        '\u2043': '-', # Hyphen bullet
-        '\u2013': '-', # En dash
-        '\u2014': '-', # Em dash
-        '\u2018': "'", # Left single quote
-        '\u2019': "'", # Right single quote
-        '\u201c': '"', # Left double quote
-        '\u201d': '"', # Right double quote
-        '\uf0b7': '-', # Wingdings bullet
-        '\uf02d': '-', # Wingdings hyphen
-        '\u25cf': '-', # Large circle bullet
-        '\u2026': '...', # Ellipsis
-        '\u00a0': ' ', # Non-breaking space
+        "\u2022": "-",  # Bullet
+        "\u2023": "-",  # Triangular bullet
+        "\u2043": "-",  # Hyphen bullet
+        "\u2013": "-",  # En dash
+        "\u2014": "-",  # Em dash
+        "\u2018": "'",  # Left single quote
+        "\u2019": "'",  # Right single quote
+        "\u201c": '"',  # Left double quote
+        "\u201d": '"',  # Right double quote
+        "\uf0b7": "-",  # Wingdings bullet
+        "\uf02d": "-",  # Wingdings hyphen
+        "\u25cf": "-",  # Large circle bullet
+        "\u2026": "...",  # Ellipsis
+        "\u00a0": " ",  # Non-breaking space
     }
     for k, v in replacements.items():
         text = text.replace(k, v)
-    
+
     # Aggressive cleanup: replace anything non-latin-1 with a safe character
     cleaned = ""
     for char in text:
         try:
-            char.encode('latin-1')
+            char.encode("latin-1")
             cleaned += char
         except UnicodeEncodeError:
-            # If it's a common multi-byte char not in our map, replace with dash or space
             cleaned += "-"
-    
+
     return cleaned
 
 
@@ -95,11 +94,11 @@ def generate_recommendation_pdf(data):
 
     pdf = FPDF()
     pdf.add_page()
-    
+
     # Add Logo if exists
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     logo_path = os.path.join(base_dir, "templates", "media", "media", "image2.jpg")
-    
+
     if os.path.exists(logo_path):
         pdf.image(logo_path, x=10, y=8, w=190)
         pdf.ln(35)
@@ -107,48 +106,45 @@ def generate_recommendation_pdf(data):
         print(f"PDF Logo not found at: {logo_path}")
 
     # Header: "Comments from Hexaview (Name)"
-    pdf.set_font("Arial", 'BU', 14)
+    pdf.set_font("Arial", "BU", 14)
     pdf.set_text_color(0, 51, 153)
-    name = clean_for_pdf(data.get('EVALUATOR', 'Candidate'))
-    pdf.cell(0, 10, f"Comments from Hexaview ({name})", ln=True, align='L')
+    name = clean_for_pdf(data.get("EVALUATOR", "Candidate"))
+    pdf.cell(0, 10, f"Comments from Hexaview ({name})", ln=True, align="L")
     pdf.ln(5)
-    
+
     sections = [
         ("Summary", "REC_SUMMARY"),
         ("Education", "REC_EDUCATION"),
         ("Employer and Work", "REC_WORK"),
         ("Candidate Strengths", "REC_STRENGTHS"),
-        ("Hexaview Hiring Recommendation", "REC_RECOMMENDATION")
+        ("Hexaview Hiring Recommendation", "REC_RECOMMENDATION"),
     ]
-    
+
     for title, key in sections:
         pdf.set_text_color(0, 0, 0)
-        pdf.set_font("Arial", 'B', 11)
+        pdf.set_font("Arial", "B", 11)
         pdf.cell(0, 8, title, ln=True)
-        
+
         pdf.set_font("Arial", size=10)
         value = data.get(key, "Not specified")
-        
+
         # Robust extraction: handle dicts, lists, and strings
         if isinstance(value, dict):
-            # If AI returned a nested dict like {'value': [...]}, extract it
             if len(value) == 1:
                 value = list(value.values())[0]
             else:
                 value = str(value)
-                
+
         if isinstance(value, list):
             content = "\n".join([str(v) for v in value])
         else:
             content = str(value)
 
-        
-        # Comprehensive CLEANUP
         content = clean_for_pdf(content)
-        
+
         pdf.multi_cell(0, 5, content)
         pdf.ln(4)
-        
+
         if title == "Summary":
             pdf.set_draw_color(200, 200, 200)
             pdf.line(10, pdf.get_y(), 200, pdf.get_y())
@@ -164,32 +160,32 @@ def generate_recommendation_pdf(data):
 
 def merge_pdfs(rec_pdf_bytes, original_pdf_bytes):
     from pypdf import PdfReader, PdfWriter
-    
+
     writer = PdfWriter()
-    
+
     # Add newly generated recommendation page
     rec_reader = PdfReader(BytesIO(rec_pdf_bytes))
     writer.add_page(rec_reader.pages[0])
-    
+
     # Add original pages, but skip the first page if it looks like a recommendation page
     orig_reader = PdfReader(BytesIO(original_pdf_bytes))
-    
+
     start_page = 0
     if len(orig_reader.pages) > 0:
         first_page_text = orig_reader.pages[0].extract_text()
-        # More robust check for existing recommendation page
         markers = ["Comments from Hexaview", "Hiring Recommendation", "Candidate Strengths"]
         if any(m in first_page_text for m in markers):
             print("Detected existing recommendation page in PDF, skipping it.")
             start_page = 1
-    
+
     for i in range(start_page, len(orig_reader.pages)):
         writer.add_page(orig_reader.pages[i])
-        
+
     out_io = BytesIO()
     writer.write(out_io)
     out_io.seek(0)
     return out_io
+
 
 def copy_doc_elements(source_bytes, target_doc):
     """
@@ -197,126 +193,120 @@ def copy_doc_elements(source_bytes, target_doc):
     Skips the first few elements if they look like a recommendation page.
     """
     source_doc = Document(BytesIO(source_bytes))
-    
-    # Identify if source doc starts with a recommendation page
+
     skip_elements_count = 0
     found_rec_header = False
     for i, source_p in enumerate(source_doc.paragraphs[:10]):
         if "Comments from Hexaview" in source_p.text:
             found_rec_header = True
             break
-            
+
     if found_rec_header:
-        # Skip everything until a page break or a reasonable limit
         temp_skip_count = 0
         for element in source_doc.element.body:
             temp_skip_count += 1
-            # Check for page break or a section footer
             xml_text = "".join(element.xpath(".//w:t"))
-            if "Hexaview Hiring Recommendation" in xml_text or element.tag.endswith('sectPr'):
-                # We reached the end of the first section (rec page)
+            if "Hexaview Hiring Recommendation" in xml_text or element.tag.endswith("sectPr"):
                 break
-            if temp_skip_count > 50: # Fail safe
+            if temp_skip_count > 50:
                 break
         skip_elements_count = temp_skip_count
 
-    # 1. Clear target placeholder
     for p in target_doc.paragraphs:
         if "{{CONTENT}}" in p.text:
             p.text = ""
             parent = p._element.getparent()
-            
-            # Copy body elements
+
             for i, element in enumerate(source_doc.element.body):
                 if i < skip_elements_count:
                     continue
-                if element.tag.endswith('sectPr'):
+                if element.tag.endswith("sectPr"):
                     continue
                 parent.append(element)
-            
-            # Remove the now-empty placeholder paragraph
+
             parent.remove(p._element)
             break
     return target_doc
 
-def generate_multi_page_resume(rec_template_path, brand_template_path, data, original_bytes, filename):
 
-    if filename.lower().endswith('.pdf'):
-        # 1. Generate Rec PDF
+def generate_multi_page_resume(rec_template_path, brand_template_path, data, original_bytes, filename):
+    if filename.lower().endswith(".pdf"):
         rec_pdf = generate_recommendation_pdf(data)
-        # 2. Merge with original
         return merge_pdfs(rec_pdf, original_bytes)
-    
+
     # 1. Fill Page 1 (Recommendation)
     doc_rec = fill_template(rec_template_path, data)
-    
+
     # 2. Prepare Page 2 (Branded Resume)
     doc_brand = Document(brand_template_path)
-    
-    if filename.lower().endswith('.docx'):
-        # Copy elements to preserve formatting (tables, styles, etc.)
+
+    if filename.lower().endswith(".docx"):
         doc_brand = copy_doc_elements(original_bytes, doc_brand)
     else:
-        # Fallback for other text-based content
         for p in doc_brand.paragraphs:
             if "{{CONTENT}}" in p.text:
                 p.text = data.get("FULL_CONTENT", "")
                 break
-    
+
     # 3. Merge them
     final_doc = merge_documents(doc_rec, doc_brand)
-    
-    # Convert the final DOCX to PDF for a unified output
+
+    # 4. Convert final DOCX to PDF
     import tempfile
     import platform
     import subprocess
-    
-    with tempfile.TemporaryDirectory() as temp_dir:
-        docx_path = os.path.join(temp_dir, "temp_result.docx")
-        pdf_path = os.path.join(temp_dir, "temp_result.pdf")
-        
-        final_doc.save(docx_path)
-        
-        # Convert to PDF
-        try:
-            if platform.system() == "Windows":
-                # On Windows, use docx2pdf (requires MS Word)
-                from docx2pdf import convert
-                convert(docx_path, pdf_path)
-            else:
-                # On Linux (Docker), use LibreOffice (soffice) headless
-                # We use -env:UserInstallation to ensure a writable user profile directory, which
-                # fixes "unable to load document" errors in many headless environments.
-                result = subprocess.run(
-                    [
-                        "soffice", 
-                        "--headless", 
-                        "--invisible",
-                        "--nodefault",
-                        "--nofirststartwizard",
-                        "--nolockcheck",
-                        "--nologo",
-                        "--norestore",
-                        "-env:UserInstallation=file:///tmp/libreoffice_user_profile",
-                        "--convert-to", "pdf", 
-                        "--outdir", temp_dir, 
-                        docx_path
-                    ],
-                    capture_output=True, text=True, timeout=120
-                )
-                if result.returncode != 0:
-                    error_msg = f"LibreOffice conversion failed.\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
-                    print(error_msg)
-                    raise RuntimeError(error_msg)
-            
-            with open(pdf_path, "rb") as f:
-                pdf_bytes = f.read()
-                
-            out_io = BytesIO(pdf_bytes)
-            out_io.seek(0)
-            return out_io
-        except Exception as e:
-            print(f"DOCX to PDF Conversion Failed: {e}")
-            raise  # Do not fallback to DOCX, let the API report the error
 
+    # Use explicit temp files, not a TemporaryDirectory that disappears too early
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as docx_tmp:
+        docx_path = docx_tmp.name
+        final_doc.save(docx_path)
+
+    pdf_path = docx_path.replace(".docx", ".pdf")
+
+    try:
+        if platform.system() == "Windows":
+            from docx2pdf import convert
+            convert(docx_path, pdf_path)
+        else:
+            result = subprocess.run(
+                [
+                    "soffice",
+                    "--headless",
+                    "--invisible",
+                    "--nodefault",
+                    "--nofirststartwizard",
+                    "--nolockcheck",
+                    "--nologo",
+                    "--norestore",
+                    "-env:UserInstallation=file:///tmp/libreoffice_user_profile",
+                    "--convert-to",
+                    "pdf",
+                    "--outdir",
+                    os.path.dirname(docx_path),
+                    docx_path,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            if result.returncode != 0:
+                error_msg = (
+                    f"LibreOffice conversion failed.\n"
+                    f"STDOUT: {result.stdout}\n"
+                    f"STDERR: {result.stderr}"
+                )
+                print(error_msg)
+                raise RuntimeError(error_msg)
+
+        with open(pdf_path, "rb") as f:
+            pdf_bytes = f.read()
+
+        out_io = BytesIO(pdf_bytes)
+        out_io.seek(0)
+        return out_io
+    finally:
+        if os.path.exists(docx_path):
+            os.unlink(docx_path)
+        if os.path.exists(pdf_path):
+            os.unlink(pdf_path)
 
