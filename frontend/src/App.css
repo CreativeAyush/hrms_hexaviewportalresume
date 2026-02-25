@@ -339,6 +339,13 @@ body {
   box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.05);
 }
 
+.drop-zone.drag-active {
+  border-color: var(--accent);
+  background: #eff6ff;
+  box-shadow: 0 0 0 6px rgba(37, 99, 235, 0.12);
+  transform: scale(1.01);
+}
+
 .drop-zone h4 {
   font-size: 0.95rem;
   font-weight: 600;

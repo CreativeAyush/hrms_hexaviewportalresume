@@ -1,6 +1,7 @@
 from docx import Document
 from io import BytesIO
 import os
+import copy
 
 def merge_documents(doc1, doc2):
     """
@@ -222,7 +223,9 @@ def copy_doc_elements(source_bytes, target_doc):
                     continue
                 if element.tag.endswith("sectPr"):
                     continue
-                parent.append(element)
+                # deepcopy is required: lxml append() MOVES nodes (removes from source)
+                # Using deepcopy ensures the original source document is not drained
+                parent.append(copy.deepcopy(element))
 
             parent.remove(p._element)
             break

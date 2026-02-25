@@ -49,11 +49,42 @@ function App() {
     const [loading, setLoading] = useState(false)
     const [activeTab, setActiveTab] = useState('converter')
     const fileInputRef = useRef(null)
+    const [isDragging, setIsDragging] = useState(false)
 
     const handleFileChange = (e) => {
         const selectedFile = e.target.files[0]
         if (selectedFile) {
             setFile(selectedFile)
+            setDownloadUrl('')
+            setStatus('')
+            setActiveTab('converter')
+        }
+    }
+
+    const handleDragOver = (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+    }
+
+    const handleDragEnter = (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setIsDragging(true)
+    }
+
+    const handleDragLeave = (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setIsDragging(false)
+    }
+
+    const handleDrop = (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setIsDragging(false)
+        const droppedFile = e.dataTransfer.files[0]
+        if (droppedFile && (droppedFile.name.endsWith('.pdf') || droppedFile.name.endsWith('.docx'))) {
+            setFile(droppedFile)
             setDownloadUrl('')
             setStatus('')
             setActiveTab('converter')
@@ -182,7 +213,14 @@ function App() {
                                         <Icons.Upload />
                                         <h3>1. Source Selection</h3>
                                     </div>
-                                    <div className="drop-zone" onClick={() => fileInputRef.current.click()}>
+                                    <div
+                                        className={`drop-zone${isDragging ? ' drag-active' : ''}`}
+                                        onClick={() => fileInputRef.current.click()}
+                                        onDragOver={handleDragOver}
+                                        onDragEnter={handleDragEnter}
+                                        onDragLeave={handleDragLeave}
+                                        onDrop={handleDrop}
+                                    >
                                         <input
                                             type="file"
                                             ref={fileInputRef}
@@ -240,7 +278,10 @@ function App() {
                                 </div>
                             </div>
                             <div className="preview-frame">
-                                <iframe src={downloadUrl} title="Document Viewer" />
+                                <object data={downloadUrl} type="application/pdf" width="100%" height="100%">
+                                    <embed src={downloadUrl} type="application/pdf" width="100%" height="100%" />
+                                    <p style={{padding:'20px',color:'#fff'}}>Your browser cannot preview PDFs. <a href={downloadUrl} download={downloadName} style={{color:'#60a5fa'}}>Click here to download.</a></p>
+                                </object>
                             </div>
                         </div>
 
