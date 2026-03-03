@@ -40,6 +40,7 @@ async def root():
 @app.post("/upload")
 async def upload_resume(
     file: UploadFile = File(...),
+    candidate_name: Optional[str] = Form(None),
     custom_recommendation: Optional[str] = Form(None),
 ):
     file_bytes = await file.read()
@@ -47,13 +48,18 @@ async def upload_resume(
     # 1. Extract data from uploaded resume
     data = get_resume_data(file_bytes, file.filename)
 
+    # Override name if HR provided it manually (takes priority over AI/fallback)
+    if candidate_name and candidate_name.strip():
+        data["EVALUATOR"] = candidate_name.strip()
+
     # Optional custom recommendation override
     if custom_recommendation and custom_recommendation.strip():
         data["REC_RECOMMENDATION"] = custom_recommendation.strip()
 
     print(
         f"DEBUG: Extracted Data: {data.get('EVALUATOR')} - "
-        f"Custom Rec: {'Yes' if custom_recommendation else 'No'}"
+        f"Custom Rec: {'Yes' if custom_recommendation else 'No'} - "
+        f"Manual Name: {'Yes' if candidate_name else 'No'}"
     )
 
     # 2. Verify templates exist

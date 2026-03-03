@@ -25,8 +25,15 @@ Produce a flat JSON object with EXACTLY these keys and formats:
 
 - NAME: The candidate's full name as written in the resume.
 
-- REC_SUMMARY: 2-3 rich paragraphs (NOT bullet points) summarizing the candidate's overall professional profile, years of experience, key domains, and standout value proposition. 
-  Write as an executive recruiter. Be specific — use actual years of experience, companies, technologies, and achievements from the resume.
+- REC_SUMMARY: Write 2 to 3 rich, flowing prose paragraphs — ABSOLUTELY NO bullet points, NO dashes, NO lists of any kind.
+  Write this as a senior Hiring Manager at Hexaview Technologies who has personally reviewed this resume and is confidently recommending the candidate.
+  Use a warm, authoritative, professional tone — like a written endorsement you would send to a client or leadership team.
+  MUST include: total years of experience, current or most recent company and role, key domains/industries, notable accomplishments with real metrics from the resume, and why this candidate stands out.
+  Each paragraph must flow naturally into the next. Do NOT start with "The candidate" — use their actual name.
+  Example tone (do NOT copy this, generate fresh content from the resume):
+    "Shubham brings over six years of progressive UX leadership across enterprise SaaS and fintech environments..."
+    "What sets Shubham apart is his ability to bridge design thinking with measurable business outcomes..."
+    "In my assessment, he is exceptionally well-prepared for senior product design roles..."
 
 - REC_EDUCATION: A multi-line string listing each qualification on its own line.
   Format each line as: "Degree/Certification | Institution | Year (if available)"

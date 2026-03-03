@@ -41,6 +41,7 @@ const Icons = {
 
 function App() {
     const [file, setFile] = useState(null)
+    const [candidateName, setCandidateName] = useState('')
     const [customRecommendation, setCustomRecommendation] = useState('')
     const [status, setStatus] = useState('')
     const [statusType, setStatusType] = useState('')
@@ -95,6 +96,9 @@ function App() {
         if (!file) return
         const formData = new FormData()
         formData.append('file', file)
+        if (candidateName.trim()) {
+            formData.append('candidate_name', candidateName.trim())
+        }
         if (customRecommendation.trim()) {
             formData.append('custom_recommendation', customRecommendation)
         }
@@ -131,6 +135,7 @@ function App() {
         setFile(null)
         setDownloadUrl('')
         setStatus('')
+        setCandidateName('')
         setCustomRecommendation('')
         setDownloadName('')
         setActiveTab('converter')
@@ -249,8 +254,15 @@ function App() {
                                 <div className="glass-card">
                                     <div className="card-header">
                                         <Icons.Pen />
-                                        <h3>2. HR Recommendation</h3>
+                                        <h3>2. Candidate Details</h3>
                                     </div>
+                                    <input
+                                        type="text"
+                                        className="name-input"
+                                        placeholder="Candidate Full Name (e.g. Shubham Semwal)"
+                                        value={candidateName}
+                                        onChange={(e) => setCandidateName(e.target.value)}
+                                    />
                                     <textarea
                                         placeholder="Enter custom evaluator notes to override AI suggestions..."
                                         value={customRecommendation}
@@ -280,7 +292,7 @@ function App() {
                             <div className="preview-frame">
                                 <object data={downloadUrl} type="application/pdf" width="100%" height="100%">
                                     <embed src={downloadUrl} type="application/pdf" width="100%" height="100%" />
-                                    <p style={{padding:'20px',color:'#fff'}}>Your browser cannot preview PDFs. <a href={downloadUrl} download={downloadName} style={{color:'#60a5fa'}}>Click here to download.</a></p>
+                                    <p style={{ padding: '20px', color: '#fff' }}>Your browser cannot preview PDFs. <a href={downloadUrl} download={downloadName} style={{ color: '#60a5fa' }}>Click here to download.</a></p>
                                 </object>
                             </div>
                         </div>
