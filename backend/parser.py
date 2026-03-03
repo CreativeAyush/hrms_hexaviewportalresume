@@ -49,30 +49,50 @@ def clean_xml_compatible(text):
 def extract_candidate_name(all_lines):
     """
     Heuristically extract the candidate's name from the top lines of the resume.
-    Looks for the first short line (< 60 chars) that is not an email/phone/URL
-    and does not start with a common section keyword.
+    - Names are almost always the very first non-empty line.
+    - Skips lines that match common section headers, field labels, contact info, URLs.
     """
+    # Keywords that indicate a non-name line (section headers, field labels, etc.)
     skip_keywords = [
         "summary", "profile", "objective", "experience", "education",
-        "skills", "contact", "address", "curriculum vitae", "resume",
-        "linkedin", "github", "portfolio"
+        "skill", "contact", "address", "curriculum vitae", "resume",
+        "linkedin", "github", "portfolio", "company", "role", "duration",
+        "brief", "project", "tool", "technology", "stack", "certif",
+        "qualification", "highlight", "strength", "achievement",
+        "responsibility", "responsibilities", "background", "language",
+        "framework", "platform", "database", "cloud", "devops",
+        "biggest", "current", "organization", "automation", "engineer",
+        "developer", "designer", "manager", "analyst", "architect",
+        "consultant", "specialist", "lead", "senior", "junior", "intern",
     ]
-    for line in all_lines[:15]:  # Only check top 15 lines
+
+    for line in all_lines[:10]:  # Only check the very top 10 lines
         stripped = line.strip()
         if not stripped:
             continue
         lower = stripped.lower()
-        # Skip lines that look like contact info, URLs, or section headers
+
+        # Skip lines that are field labels (end with colon) e.g. "Company Name:"
+        if stripped.endswith(":"):
+            continue
+
+        # Skip lines containing known non-name keywords
         if any(k in lower for k in skip_keywords):
             continue
-        if re.search(r'[@+\d/\\|]', stripped):  # phone/email/separator
+
+        # Skip lines with contact-info characters: @, digits, /, \, |, +, -, ,
+        if re.search(r'[@+\d/\\|,\-]', stripped):
             continue
-        if len(stripped) > 60:
+
+        # Skip very long lines (not a name)
+        if len(stripped) > 50:
             continue
-        # Name usually has 2-4 words of reasonable length
+
+        # Names: 2–4 words, each word starts with uppercase, minimum 2 chars
         words = stripped.split()
-        if 2 <= len(words) <= 5 and all(len(w) >= 2 for w in words):
+        if 2 <= len(words) <= 4 and all(len(w) >= 2 and w[0].isupper() for w in words):
             return stripped
+
     return "Candidate"
 
 
