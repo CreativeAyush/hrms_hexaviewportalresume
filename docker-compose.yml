@@ -8,9 +8,12 @@ services:
       dockerfile: backend/Dockerfile
     container_name: resume-backend
     restart: unless-stopped
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false        # .env is optional — use host env vars if file missing
     environment:
       - PYTHONUNBUFFERED=1
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}   # Pass from host if .env not present
     volumes:
       - ./templates:/templates:ro
     expose:
