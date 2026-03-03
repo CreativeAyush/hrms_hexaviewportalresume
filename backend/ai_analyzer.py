@@ -10,58 +10,83 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 def analyze_resume_with_ai(resume_text):
     """
     Uses OpenAI to extract structured data for the hiring recommendation page.
+    All content is dynamically generated from the uploaded resume text.
     """
-    if not os.getenv("OPENAI_API_KEY") or "your_actual_key" in os.getenv("OPENAI_API_KEY"):
+    if not os.getenv("OPENAI_API_KEY") or "your_actual_key" in os.getenv("OPENAI_API_KEY", ""):
         return None
 
     prompt = f"""
-    You are an expert executive recruiter and hiring manager with 6+ years of experience at Hexaview Technologies. 
-    Analyze the following resume text and provide a highly professional, structured summary for a "Hiring Recommendation" page.
-    
-    Structure your output as a JSON object with EXACTLY these keys:
-    - NAME: The candidate's full name.
-    - REC_SUMMARY: A professional summary. Use 2-3 bullet points (starting with -) to highlight the core value proposition. 
-    - REC_EDUCATION: A concise list of degrees and certifications. Use | to separate items on the same line.
-    - REC_WORK: A brief summary of work history. Use bullet points (starting with -) to describe key roles and achievements.
-    - REC_STRENGTHS: A bulleted list (starting with -) of 5-6 top-tier technical or leadership strengths.
-    - REC_RECOMMENDATION: A structured recommendation in 3 distinct bullet points (starting with -):
-        1. "YES — Strong Fit for [Senior/Specific Role] Roles."
-        2. A 2-3 sentence justification of their maturity and fit.
-        3. "Don’t hesitate to call me if you have any doubts/concern"
-    
-    CRITICAL: 
-    - The JSON object must be FLAT. Do NOT nest objects like {{"REC_SUMMARY": {{"value": "..."}}}}. 
-    - Values must be either a STRING or a LIST OF STRINGS.
+You are a senior Technical Recruiter and Hiring Manager at Hexaview Technologies with 10+ years of experience.
+Your task is to read the resume below and produce a detailed, professional "Hiring Recommendation" report for it.
 
-    - Use the character '-' for all bullet points.
+ALL content you generate MUST be grounded in the actual resume text — never invent facts.
 
-    
-    Style Guidelines:
-    - Write as a seasoned HR professional.
-    - Be concise but impactful.
-    - Focus on executive-level delivery and enterprise governance.
+Produce a flat JSON object with EXACTLY these keys and formats:
 
-    Resume Text:
-    \"\"\"{resume_text}\"\"\"
-    """
+- NAME: The candidate's full name as written in the resume.
 
+- REC_SUMMARY: 2-3 rich paragraphs (NOT bullet points) summarizing the candidate's overall professional profile, years of experience, key domains, and standout value proposition. 
+  Write as an executive recruiter. Be specific — use actual years of experience, companies, technologies, and achievements from the resume.
 
+- REC_EDUCATION: A multi-line string listing each qualification on its own line.
+  Format each line as: "Degree/Certification | Institution | Year (if available)"
+  Example:
+    B.Tech (Computer Science) | IIT Delhi | 2015
+    PMP | PMI | 2020
+
+- REC_WORK: A multi-line narrative + bullet summary of work history. Start with 1-2 short narrative paragraphs about the candidate's career arc, then list 4-6 bullet points (starting with *) covering key responsibilities/achievements drawn directly from the resume.
+  Example format:
+    John has 10+ years across fintech and SaaS...
+    He currently leads engineering at XYZ Corp...
+    * Led migration of 50+ microservices to AWS, reducing infra cost by 30%
+    * Managed cross-functional teams of 40+ engineers across 3 time zones
+    * ...
+
+- REC_STRENGTHS: 5-7 bullet points (starting with *) listing specific, concrete technical or leadership strengths extracted from the resume. Be precise — use actual technologies, methodologies, certifications, or metrics from the resume.
+  Example:
+    * DevOps Modernization — Jenkins, GitHub Actions, Kubernetes
+    * Portfolio Management ($4M+ budgets, 60-120 FTEs)
+    * FedRAMP & SOC2 Compliance Leadership
+
+- REC_RECOMMENDATION: Exactly 3 bullet points (starting with *):
+    1. First bullet: "YES — Strong Fit for [specific role type matching resume] Roles."
+    2. Second bullet: 2-3 sentences explaining WHY using specific evidence from the resume (role, metrics, skills).
+    3. Third bullet: "Don't hesitate to call me if you have any doubts/concerns."
+
+CRITICAL RULES:
+- The JSON must be FLAT. No nested objects.
+- All values must be STRING (multi-line strings are fine, use actual newlines).
+- Do NOT use markdown syntax (no **, no ##, no ```) inside values.
+- Use * for bullet points (NOT - or •).
+- Every single detail must come from the resume. Do not fabricate companies, dates, or numbers.
+
+Resume Text:
+\"\"\"{resume_text}\"\"\"
+"""
 
     try:
         print(f"DEBUG: Sending {len(resume_text)} chars to AI...")
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are a helpful assistant that extracts structured recruitment data."},
+                {"role": "system", "content": "You are an expert recruitment analyst. Extract and summarize resume data into a structured JSON hiring recommendation. Always ground your output in facts from the resume."},
                 {"role": "user", "content": prompt}
             ],
-            response_format={ "type": "json_object" }
+            response_format={"type": "json_object"},
+            temperature=0.3
         )
-        
+
         content = response.choices[0].message.content
-        print(f"DEBUG: AI Response: {content[:200]}...") # Log first 200 chars
-        return json.loads(content)
+        print(f"DEBUG: AI Response: {content[:300]}...")
+        parsed = json.loads(content)
+
+        # Ensure all values are strings (flatten lists if AI returns them)
+        for key in parsed:
+            if isinstance(parsed[key], list):
+                parsed[key] = "\n".join([str(v) for v in parsed[key]])
+
+        return parsed
+
     except Exception as e:
         print(f"AI Analysis Error: {e}")
         return None
-

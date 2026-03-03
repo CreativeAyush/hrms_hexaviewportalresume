@@ -46,6 +46,36 @@ def clean_xml_compatible(text):
         0x10000 <= ord(ch) <= 0x10FFFF
     ))
 
+def extract_candidate_name(all_lines):
+    """
+    Heuristically extract the candidate's name from the top lines of the resume.
+    Looks for the first short line (< 60 chars) that is not an email/phone/URL
+    and does not start with a common section keyword.
+    """
+    skip_keywords = [
+        "summary", "profile", "objective", "experience", "education",
+        "skills", "contact", "address", "curriculum vitae", "resume",
+        "linkedin", "github", "portfolio"
+    ]
+    for line in all_lines[:15]:  # Only check top 15 lines
+        stripped = line.strip()
+        if not stripped:
+            continue
+        lower = stripped.lower()
+        # Skip lines that look like contact info, URLs, or section headers
+        if any(k in lower for k in skip_keywords):
+            continue
+        if re.search(r'[@+\d/\\|]', stripped):  # phone/email/separator
+            continue
+        if len(stripped) > 60:
+            continue
+        # Name usually has 2-4 words of reasonable length
+        words = stripped.split()
+        if 2 <= len(words) <= 5 and all(len(w) >= 2 for w in words):
+            return stripped
+    return "Candidate"
+
+
 def parse_resume(text):
     # Clean text of control characters that break python-docx
     clean_text = clean_xml_compatible(text)
@@ -54,13 +84,11 @@ def parse_resume(text):
     from ai_analyzer import analyze_resume_with_ai
     ai_data = analyze_resume_with_ai(clean_text)
 
-    
     if ai_data:
         # Map AI labels to our template placeholders
         return {
             "EVALUATOR": ai_data.get("NAME", "Candidate"),
             "REC_SUMMARY": ai_data.get("REC_SUMMARY", ""),
-
             "REC_EDUCATION": ai_data.get("REC_EDUCATION", ""),
             "REC_WORK": ai_data.get("REC_WORK", ""),
             "REC_STRENGTHS": ai_data.get("REC_STRENGTHS", ""),
@@ -77,14 +105,22 @@ def parse_resume(text):
         "REC_STRENGTHS": ["skills", "technical skills", "strengths", "highlights", "competencies", "expertise"]
     }
 
+    # Extract candidate name from top of resume (no longer hardcoded)
+    candidate_name = extract_candidate_name(all_lines)
 
     extracted_data = {
-        "EVALUATOR": "Pawan Kumar Tyagi",
+        "EVALUATOR": candidate_name,
         "REC_SUMMARY": "",
         "REC_EDUCATION": "",
         "REC_WORK": "",
         "REC_STRENGTHS": "",
-        "REC_RECOMMENDATION": "YES — Strong Fit for this Role.",
+        "REC_RECOMMENDATION": (
+            f"- YES — Strong Fit for this Role.\n"
+            f"- {candidate_name} demonstrates a solid background and relevant expertise "
+            f"for the position applied. Based on the resume, the candidate shows strong "
+            f"alignment with the required qualifications.\n"
+            f"- Don't hesitate to call me if you have any doubts/concerns."
+        ),
         "FULL_CONTENT": clean_text
     }
 

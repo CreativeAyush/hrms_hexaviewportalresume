@@ -94,6 +94,7 @@ def generate_recommendation_pdf(data):
     import tempfile
 
     pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
 
     # Add Logo if exists
@@ -121,15 +122,48 @@ def generate_recommendation_pdf(data):
         ("Hexaview Hiring Recommendation", "REC_RECOMMENDATION"),
     ]
 
+    def render_section_content(pdf, raw_content):
+        """
+        Renders content line-by-line:
+        - Lines starting with '*' -> indented bullet item with a dash
+        - Empty lines -> small vertical gap between paragraphs
+        - All other lines -> normal paragraph text
+        """
+        lines = raw_content.split("\n")
+        for line in lines:
+            stripped = line.strip()
+
+            if not stripped:
+                # Empty line = small gap between paragraphs
+                pdf.ln(3)
+                continue
+
+            if stripped.startswith("*"):
+                # Bullet line: indent with dash
+                bullet_text = clean_for_pdf(stripped[1:].strip())
+                pdf.set_x(18)  # indent bullet lines
+                pdf.set_font("Arial", size=10)
+                pdf.multi_cell(0, 5, f"- {bullet_text}")
+            else:
+                # Normal paragraph line
+                pdf.set_x(10)
+                pdf.set_font("Arial", size=10)
+                pdf.multi_cell(0, 5, clean_for_pdf(stripped))
+
     for title, key in sections:
+        # Section title in bold
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("Arial", "B", 11)
         pdf.cell(0, 8, title, ln=True)
 
-        pdf.set_font("Arial", size=10)
+        # Divider line under every section title
+        pdf.set_draw_color(180, 180, 180)
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+        pdf.ln(3)
+
+        # Get and normalize section value
         value = data.get(key, "Not specified")
 
-        # Robust extraction: handle dicts, lists, and strings
         if isinstance(value, dict):
             if len(value) == 1:
                 value = list(value.values())[0]
@@ -141,15 +175,9 @@ def generate_recommendation_pdf(data):
         else:
             content = str(value)
 
-        content = clean_for_pdf(content)
-
-        pdf.multi_cell(0, 5, content)
-        pdf.ln(4)
-
-        if title == "Summary":
-            pdf.set_draw_color(200, 200, 200)
-            pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-            pdf.ln(4)
+        pdf.set_text_color(0, 0, 0)
+        render_section_content(pdf, content)
+        pdf.ln(5)
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         pdf.output(tmp.name)
@@ -164,9 +192,10 @@ def merge_pdfs(rec_pdf_bytes, original_pdf_bytes):
 
     writer = PdfWriter()
 
-    # Add newly generated recommendation page
+    # Add ALL pages from the recommendation PDF (it may overflow to multiple pages)
     rec_reader = PdfReader(BytesIO(rec_pdf_bytes))
-    writer.add_page(rec_reader.pages[0])
+    for rec_page in rec_reader.pages:
+        writer.add_page(rec_page)
 
     # Add original pages, but skip the first page if it looks like a recommendation page
     orig_reader = PdfReader(BytesIO(original_pdf_bytes))
