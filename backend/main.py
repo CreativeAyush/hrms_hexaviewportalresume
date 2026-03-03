@@ -12,7 +12,7 @@ except ImportError:
     from parser import get_resume_data
     from filler import generate_multi_page_resume
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"), override=False)
 
 app = FastAPI()
 

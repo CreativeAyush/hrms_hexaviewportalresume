@@ -3,7 +3,10 @@ import json
 from openai import OpenAI
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load .env from project root (one level up from backend/)
+# Works both locally and in Docker (Docker passes env_file via docker-compose)
+_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+load_dotenv(os.path.join(_project_root, ".env"), override=False)
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
