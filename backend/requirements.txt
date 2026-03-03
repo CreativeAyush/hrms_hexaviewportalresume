@@ -7,7 +7,8 @@ python-multipart
 
 # ── Document Processing ────────────────────────────────────
 python-docx          # Read/write .docx files
-pdfminer.six         # Extract text from PDFs
+pdfminer.six         # Extract text from PDFs (fallback)
+pdfplumber           # Better PDF text extraction (primary)
 pypdf                # Merge/read PDF pages
 
 # ── PDF Generation ─────────────────────────────────────────

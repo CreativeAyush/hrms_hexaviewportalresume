@@ -1,41 +1,135 @@
 import re
 from io import BytesIO
-from pdfminer.high_level import extract_text
 from docx import Document
 
-def extract_text_from_pdf(pdf_bytes):
-    text = extract_text(BytesIO(pdf_bytes))
-    # Fix common PDF extraction artifacts (ligatures)
-    # ti often becomes $ or similar
-    # fi often becomes F
-    # ff often becomes f
-    # fl often becomes fl
-    text = text.replace('ﬁ', 'fi')
-    text = text.replace('ﬂ', 'fl')
-    text = text.replace('ﬀ', 'ff')
-    text = text.replace('ﬁ', 'fi')
-    # Custom fixes for the user's specific case
-    # In many PDF extractions, 'ti' is corrupted to 'F' or '$'
-    text = text.replace('ﬁ', 'fi')
-    text = text.replace('ﬂ', 'fl')
-    text = text.replace('ﬀ', 'ff')
-    
-    # Generic regex for the common '$' and 'F' issues in ligatures
-    # Mapping both to 'ti' as seen in the user's examples
-    text = re.sub(r'([a-zA-Z])\$([a-zA-Z])', r'\1ti\2', text)
-    text = re.sub(r'([a-zA-Z])F([a-zA-Z])', r'\1ti\2', text)
 
-    
-    return text
+# ─── PDF Text Extraction ──────────────────────────────────────────────────────
+
+def extract_text_from_pdf(pdf_bytes):
+    """
+    Primary extractor: pdfplumber (handles complex layouts + fonts well).
+    Fallback:          pdfminer  (if pdfplumber not installed or fails).
+    After extraction, runs deep_clean_pdf_text() to remove artifacts.
+    """
+    text = ""
+
+    # 1. Try pdfplumber first — much cleaner output for structured resumes
+    try:
+        import pdfplumber
+        with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
+            pages = []
+            for page in pdf.pages:
+                page_text = page.extract_text(x_tolerance=2, y_tolerance=2)
+                if page_text:
+                    pages.append(page_text)
+            text = "\n".join(pages)
+        print(f"DEBUG: pdfplumber extracted {len(text)} chars")
+    except Exception as e:
+        print(f"DEBUG: pdfplumber failed ({e}), falling back to pdfminer")
+        text = ""
+
+    # 2. Fallback to pdfminer if pdfplumber gave empty result or failed
+    if not text.strip():
+        try:
+            from pdfminer.high_level import extract_text as pdfminer_extract
+            text = pdfminer_extract(BytesIO(pdf_bytes))
+            print(f"DEBUG: pdfminer extracted {len(text)} chars")
+        except Exception as e:
+            print(f"DEBUG: pdfminer also failed: {e}")
+            text = ""
+
+    return deep_clean_pdf_text(text)
+
+
+def deep_clean_pdf_text(text):
+    """
+    Aggressively cleans raw PDF-extracted text:
+    - Removes (cid:N) artifacts from unembedded fonts
+    - Fixes common ligature replacements (fi, fl, ff)
+    - Collapses excessive whitespace
+    - Deduplicates repeated content blocks
+    """
+    if not text:
+        return ""
+
+    # Remove CID artifacts e.g. (cid:9), (cid:32), (cid:131)
+    text = re.sub(r'\(cid:\d+\)', '', text)
+
+    # Fix ligature artifacts
+    ligature_map = {
+        'ﬁ': 'fi', 'ﬂ': 'fl', 'ﬀ': 'ff', 'ﬃ': 'ffi',
+        'ﬄ': 'ffl', 'ﬅ': 'st', 'ﬆ': 'st',
+    }
+    for bad, good in ligature_map.items():
+        text = text.replace(bad, good)
+
+    # Remove null bytes and other control chars except newlines/tabs
+    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
+
+    # Collapse more than 2 consecutive blank lines into 2
+    text = re.sub(r'\n{3,}', '\n\n', text)
+
+    # Remove lines that are only dots, dashes, underscores (decorative lines)
+    text = re.sub(r'(?m)^[\.\-_=\s]{5,}$', '', text)
+
+    # Strip trailing spaces from each line
+    text = '\n'.join(line.rstrip() for line in text.splitlines())
+
+    # Deduplicate repeated content blocks
+    text = deduplicate_text(text)
+
+    return text.strip()
+
+
+def deduplicate_text(text):
+    """
+    Removes duplicate paragraph blocks that sometimes appear in PDFs
+    when footers/headers are repeated or when the document has two columns
+    that get merged in a garbled way.
+
+    Strategy: split into paragraphs, keep only first occurrence of each paragraph
+    that appears more than once (if paragraph > 40 chars).
+    """
+    paragraphs = re.split(r'\n{2,}', text)
+    seen = set()
+    result = []
+    for para in paragraphs:
+        stripped = para.strip()
+        if not stripped:
+            continue
+        # Only deduplicate longer blocks (short lines like "Education" are OK to repeat)
+        key = re.sub(r'\s+', ' ', stripped).lower()
+        if len(key) > 40:
+            if key in seen:
+                continue
+            seen.add(key)
+        result.append(stripped)
+    return '\n\n'.join(result)
+
+
+# ─── DOCX Text Extraction ─────────────────────────────────────────────────────
 
 def extract_text_from_docx(docx_bytes):
     doc = Document(BytesIO(docx_bytes))
-    return "\n".join([para.text for para in doc.paragraphs])
+    lines = []
+    for para in doc.paragraphs:
+        if para.text.strip():
+            lines.append(para.text)
+    # Also extract from tables
+    for table in doc.tables:
+        for row in table.rows:
+            row_text = ' | '.join(cell.text.strip() for cell in row.cells if cell.text.strip())
+            if row_text:
+                lines.append(row_text)
+    return '\n'.join(lines)
+
+
+# ─── XML Safety Cleanup ───────────────────────────────────────────────────────
 
 def clean_xml_compatible(text):
     """
-    Removes characters that are not allowed in XML 1.0.
-    Valid characters: #x9 | #xA | #xD | [#x20-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF]
+    Removes characters not allowed in XML 1.0 (used before writing to DOCX).
+    Valid: #x9 | #xA | #xD | [#x20-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF]
     """
     if not text:
         return ""
@@ -46,13 +140,15 @@ def clean_xml_compatible(text):
         0x10000 <= ord(ch) <= 0x10FFFF
     ))
 
+
+# ─── Name Extraction (Fallback) ───────────────────────────────────────────────
+
 def extract_candidate_name(all_lines):
     """
     Heuristically extract the candidate's name from the top lines of the resume.
-    - Names are almost always the very first non-empty line.
-    - Skips lines that match common section headers, field labels, contact info, URLs.
+    Names are almost always the very first non-empty line.
+    Skips lines that match common section headers, field labels, contact info, URLs.
     """
-    # Keywords that indicate a non-name line (section headers, field labels, etc.)
     skip_keywords = [
         "summary", "profile", "objective", "experience", "education",
         "skill", "contact", "address", "curriculum vitae", "resume",
@@ -64,31 +160,24 @@ def extract_candidate_name(all_lines):
         "biggest", "current", "organization", "automation", "engineer",
         "developer", "designer", "manager", "analyst", "architect",
         "consultant", "specialist", "lead", "senior", "junior", "intern",
+        "expertise", "hexaview",
     ]
 
-    for line in all_lines[:10]:  # Only check the very top 10 lines
+    for line in all_lines[:10]:
         stripped = line.strip()
         if not stripped:
             continue
         lower = stripped.lower()
 
-        # Skip lines that are field labels (end with colon) e.g. "Company Name:"
         if stripped.endswith(":"):
             continue
-
-        # Skip lines containing known non-name keywords
         if any(k in lower for k in skip_keywords):
             continue
-
-        # Skip lines with contact-info characters: @, digits, /, \, |, +, -, ,
-        if re.search(r'[@+\d/\\|,\-]', stripped):
+        if re.search(r'[@+\d/\\|,]', stripped):
             continue
-
-        # Skip very long lines (not a name)
         if len(stripped) > 50:
             continue
 
-        # Names: 2–4 words, each word starts with uppercase, minimum 2 chars
         words = stripped.split()
         if 2 <= len(words) <= 4 and all(len(w) >= 2 and w[0].isupper() for w in words):
             return stripped
@@ -96,16 +185,24 @@ def extract_candidate_name(all_lines):
     return "Candidate"
 
 
+# ─── Main Parse Entry Point ───────────────────────────────────────────────────
+
 def parse_resume(text):
-    # Clean text of control characters that break python-docx
+    # Step 1: XML-safe cleanup
     clean_text = clean_xml_compatible(text)
-    
-    # 1. Try AI Analysis first
-    from ai_analyzer import analyze_resume_with_ai
-    ai_data = analyze_resume_with_ai(clean_text)
+
+    # Log what we're sending to AI (first 500 chars for debugging)
+    print(f"DEBUG: Cleaned text preview:\n{clean_text[:500]}\n---")
+
+    # Step 2: Try AI analysis
+    try:
+        from ai_analyzer import analyze_resume_with_ai
+        ai_data = analyze_resume_with_ai(clean_text)
+    except Exception as e:
+        print(f"DEBUG: AI import/call failed: {e}")
+        ai_data = None
 
     if ai_data:
-        # Map AI labels to our template placeholders
         return {
             "EVALUATOR": ai_data.get("NAME", "Candidate"),
             "REC_SUMMARY": ai_data.get("REC_SUMMARY", ""),
@@ -116,7 +213,7 @@ def parse_resume(text):
             "FULL_CONTENT": clean_text
         }
 
-    # 2. Fallback to Section Based Extraction if AI fails or no key
+    # Step 3: Fallback — section-based extraction
     all_lines = [line.strip() for line in clean_text.split('\n') if line.strip()]
     sections_map = {
         "REC_SUMMARY": ["summary", "profile", "objective", "career", "professional", "highlights"],
@@ -125,7 +222,6 @@ def parse_resume(text):
         "REC_STRENGTHS": ["skills", "technical skills", "strengths", "highlights", "competencies", "expertise"]
     }
 
-    # Extract candidate name from top of resume (no longer hardcoded)
     candidate_name = extract_candidate_name(all_lines)
 
     extracted_data = {
@@ -135,11 +231,11 @@ def parse_resume(text):
         "REC_WORK": "",
         "REC_STRENGTHS": "",
         "REC_RECOMMENDATION": (
-            f"- YES — Strong Fit for this Role.\n"
-            f"- {candidate_name} demonstrates a solid background and relevant expertise "
+            f"* YES — Strong Fit for this Role.\n"
+            f"* {candidate_name} demonstrates a solid background and relevant expertise "
             f"for the position applied. Based on the resume, the candidate shows strong "
             f"alignment with the required qualifications.\n"
-            f"- Don't hesitate to call me if you have any doubts/concerns."
+            f"* Don't hesitate to call me if you have any doubts/concerns."
         ),
         "FULL_CONTENT": clean_text
     }
@@ -153,14 +249,13 @@ def parse_resume(text):
                 current_section = section_key
                 found_header = True
                 break
-        
+
         if found_header:
             continue
-            
+
         if current_section:
             extracted_data[current_section] += line + "\n"
 
-    # Cleanup granular sections
     for key in sections_map.keys():
         if not extracted_data[key].strip():
             extracted_data[key] = "Details not specifically found in original resume."
@@ -169,6 +264,7 @@ def parse_resume(text):
 
     return extracted_data
 
+
 def get_resume_data(file_bytes, filename):
     if filename.lower().endswith('.pdf'):
         text = extract_text_from_pdf(file_bytes)
@@ -176,6 +272,5 @@ def get_resume_data(file_bytes, filename):
         text = extract_text_from_docx(file_bytes)
     else:
         text = ""
-        
-    return parse_resume(text)
 
+    return parse_resume(text)
